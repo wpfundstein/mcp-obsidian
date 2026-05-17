@@ -200,7 +200,50 @@ class Obsidian():
             return None
 
         return self._safe_call(call_fn)
-    
+
+    def str_replace(self, filepath: str, old_str: str, new_str: str) -> int:
+        """Replace exactly one occurrence of old_str with new_str in a file.
+
+        Reads the file, requires old_str to appear exactly once, replaces it,
+        and writes the result back via put_content. Idempotent when old_str
+        equals new_str — no write is issued, but old_str must still be
+        present in the file (so the call cannot silently mask a bad target).
+
+        Note: the Local REST API has no conditional-write primitive, so the
+        read-modify-write is not atomic against concurrent edits from other
+        clients (e.g. the Obsidian UI itself). Last write wins.
+
+        Args:
+            filepath: Path to the file (relative to vault root).
+            old_str: Exact substring to replace. Must match byte-for-byte,
+                including whitespace and newlines.
+            new_str: Replacement string. Equal to old_str → no-op write.
+
+        Returns:
+            Length of new_str in characters (informational).
+
+        Raises:
+            Exception: if old_str is not found, or appears more than once.
+                The file is not modified in either case.
+        """
+        content = self.get_file_contents(filepath)
+        count = content.count(old_str)
+        if count == 0:
+            raise Exception(
+                f"String not found in {filepath}: {old_str!r}. "
+                "The file was not modified."
+            )
+        if count > 1:
+            raise Exception(
+                f"String appears {count} times in {filepath}; replacement "
+                "must be unique. Extend old_str with more surrounding "
+                "context to disambiguate. The file was not modified."
+            )
+        if old_str == new_str:
+            return len(new_str)
+        self.put_content(filepath, content.replace(old_str, new_str, 1))
+        return len(new_str)
+
     def delete_file(self, filepath: str) -> Any:
         """Delete a file or directory from the vault.
         
