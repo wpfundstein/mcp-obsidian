@@ -344,6 +344,76 @@ class PutContentToolHandler(ToolHandler):
        ]
    
 
+class StrReplaceToolHandler(ToolHandler):
+   def __init__(self):
+       super().__init__("obsidian_str_replace")
+
+   def get_tool_description(self):
+       return Tool(
+           name=self.name,
+           description=(
+               "Replace a unique string in a file with another string. Reads "
+               "the file, finds exactly one occurrence of old_str, and "
+               "replaces it with new_str. Token-efficient for small mid-file "
+               "edits — sends only the changed substrings instead of the "
+               "full file body like obsidian_put_content.\n"
+               "\n"
+               "Requirements:\n"
+               "- old_str must match the file byte-for-byte (whitespace and "
+               "newlines matter).\n"
+               "- old_str must appear EXACTLY ONCE in the file. If it "
+               "appears multiple times, extend it with more surrounding "
+               "context until unique. If it doesn't appear, the call fails "
+               "without modifying the file.\n"
+               "- Idempotent: passing equal old_str and new_str succeeds "
+               "without writing, but old_str must still be present in the "
+               "file.\n"
+               "\n"
+               "Note: the read-modify-write is not atomic against "
+               "concurrent edits (e.g. via the Obsidian UI). Last write "
+               "wins. For full-file overwrites use obsidian_put_content; "
+               "for heading/block/frontmatter edits use obsidian_patch_content."
+           ),
+           inputSchema={
+               "type": "object",
+               "properties": {
+                   "filepath": {
+                       "type": "string",
+                       "description": "Path to the file (relative to vault root)",
+                       "format": "path"
+                   },
+                   "old_str": {
+                       "type": "string",
+                       "description": (
+                           "Exact substring to replace. Must appear exactly "
+                           "once in the file. Match is byte-for-byte; include "
+                           "enough surrounding context to disambiguate."
+                       )
+                   },
+                   "new_str": {
+                       "type": "string",
+                       "description": "Replacement string. Pass equal to old_str for a no-op."
+                   }
+               },
+               "required": ["filepath", "old_str", "new_str"]
+           }
+       )
+
+   def run_tool(self, args: dict) -> Sequence[TextContent | ImageContent | EmbeddedResource]:
+       if not all(k in args for k in ["filepath", "old_str", "new_str"]):
+           raise RuntimeError("filepath, old_str and new_str arguments required")
+
+       api = obsidian.Obsidian(api_key=api_key, host=obsidian_host)
+       api.str_replace(args["filepath"], args["old_str"], args["new_str"])
+
+       return [
+           TextContent(
+               type="text",
+               text=f"Successfully replaced content in {args['filepath']}"
+           )
+       ]
+
+
 class DeleteFileToolHandler(ToolHandler):
    def __init__(self):
        super().__init__("obsidian_delete_file")
